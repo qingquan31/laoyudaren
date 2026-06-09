@@ -125,6 +125,13 @@ const mechanicCatalog = [
   { id: "master", name: "达人考验", desc: "鱼更多、更警觉、螃蟹更多。", maxCrabs: 2, fishBonus: 4, escapeMultiplier: 1.15 },
 ];
 
+const encounterCycle = [
+  { id: "crab", label: "螃蟹", desc: "螃蟹巡逻", maxCrabs: 1 },
+  { id: "shell", label: "贝壳", desc: "贝壳奖励", shellCount: 3 },
+  { id: "weed", label: "水草", desc: "水草缠网", weedCount: 2 },
+  { id: "school", label: "鱼群", desc: "鱼群聚集", fishBonus: 3 },
+];
+
 const fishTypeById = Object.fromEntries(fishTypes.map((type) => [type.id, type]));
 Object.assign(fishTypeById.tropical, { dashInterval: 2.8, dashDuration: 0.45, dashMultiplier: 1.45 });
 Object.assign(fishTypeById.zebrafish, { dashInterval: 2.2, dashDuration: 0.5, dashMultiplier: 1.7, escapeSensitivity: 1.12 });
@@ -210,6 +217,38 @@ function balanceTaskForDurability(task, mechanic, levelNumber, newestId) {
   }
 }
 
+function mergeEncounter(mechanic, encounter) {
+  const merged = { ...mechanic };
+  const tags = new Set(merged.encounterTags || []);
+  tags.add(encounter.label);
+
+  if (encounter.maxCrabs) merged.maxCrabs = Math.max(merged.maxCrabs || 0, encounter.maxCrabs);
+  if (encounter.shellCount) merged.shellCount = Math.max(merged.shellCount || 0, encounter.shellCount);
+  if (encounter.weedCount) merged.weedCount = Math.max(merged.weedCount || 0, encounter.weedCount);
+  if (encounter.fishBonus) merged.fishBonus = (merged.fishBonus || 0) + encounter.fishBonus;
+
+  merged.encounterTags = [...tags];
+  return merged;
+}
+
+function buildLevelMechanic(baseMechanic, levelNumber) {
+  let mechanic = { ...baseMechanic };
+  const blockIndex = Math.floor((levelNumber - 1) / 3);
+
+  if (levelNumber >= 3) {
+    const encounter = encounterCycle[(blockIndex - 1 + encounterCycle.length) % encounterCycle.length];
+    if (encounter.id !== mechanic.id) mechanic = mergeEncounter(mechanic, encounter);
+  }
+
+  const tags = mechanic.encounterTags || [];
+  if (tags.length > 0) {
+    mechanic.name = `${mechanic.name} · ${tags.join("+")}`;
+    mechanic.desc = `${mechanic.desc} 本关还有${tags.join("、")}。`;
+  }
+
+  return mechanic;
+}
+
 function createLevelConfigs() {
   const chapterNames = ["夜市小摊", "庙会鱼池", "锦鲤池塘", "海洋触摸池", "金鳞挑战"];
   const configs = [];
@@ -218,7 +257,7 @@ function createLevelConfigs() {
     const chapter = Math.ceil(i / 10);
     const step = ((i - 1) % 10) + 1;
     const mechanicIndex = i < 3 ? 0 : Math.floor((i - 3) / 3) + 1;
-    const mechanic = mechanicCatalog[Math.min(mechanicIndex, mechanicCatalog.length - 1)];
+    const mechanic = buildLevelMechanic(mechanicCatalog[Math.min(mechanicIndex, mechanicCatalog.length - 1)], i);
     const unlockedCount = Math.min(fishTypes.length, Math.floor((i - 1) / 2) + 1);
     const availableTypes = fishTypes.slice(Math.max(0, unlockedCount - 4), unlockedCount);
     const newest = availableTypes[availableTypes.length - 1];
@@ -252,7 +291,7 @@ function createLevelConfigs() {
       activeFishIds: availableTypes.map((type) => type.id),
       task,
       fishWeights,
-      maxCrabs: mechanic.maxCrabs || (i < 3 ? 0 : i < 12 ? 1 : 2),
+      maxCrabs: mechanic.maxCrabs || 0,
     });
   }
 

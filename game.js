@@ -125,6 +125,91 @@ const mechanicCatalog = [
   { id: "master", name: "达人考验", desc: "鱼更多、更警觉、螃蟹更多。", maxCrabs: 2, fishBonus: 4, escapeMultiplier: 1.15 },
 ];
 
+const fishTypeById = Object.fromEntries(fishTypes.map((type) => [type.id, type]));
+Object.assign(fishTypeById.tropical, { dashInterval: 2.8, dashDuration: 0.45, dashMultiplier: 1.45 });
+Object.assign(fishTypeById.zebrafish, { dashInterval: 2.2, dashDuration: 0.5, dashMultiplier: 1.7, escapeSensitivity: 1.12 });
+Object.assign(fishTypeById.eel, { dashInterval: 3.2, dashDuration: 0.7, dashMultiplier: 1.55 });
+Object.assign(fishTypeById.rainbow, { dashInterval: 2.6, dashDuration: 0.55, dashMultiplier: 1.65, bonusCoinAmount: 18 });
+Object.assign(fishTypeById.puffer, { costMultiplier: 1.35, escapeSensitivity: 0.72 });
+Object.assign(fishTypeById.bigkoi, { costMultiplier: 1.18, escapeSensitivity: 0.82 });
+Object.assign(fishTypeById.carp, { costMultiplier: 1.2, escapeSensitivity: 0.86 });
+Object.assign(fishTypeById.silver, { bonusCoinAmount: 10 });
+Object.assign(fishTypeById.ruby, { bonusCoinAmount: 14 });
+Object.assign(fishTypeById.lantern, { repairAmount: 5 });
+Object.assign(fishTypeById.moon, { repairAmount: 6 });
+Object.assign(fishTypeById.crystal, { repairAmount: 8, escapeSensitivity: 1.08 });
+Object.assign(fishTypeById.dragon, { costMultiplier: 1.28, bonusCoinAmount: 26, escapeSensitivity: 1.22 });
+
+function effectiveCatchCost(type) {
+  return type.durabilityCost * (type.costMultiplier || 1);
+}
+
+function mechanicDurabilityMultiplier(mechanic) {
+  return mechanic.catchCostMultiplier || mechanic.durabilityMultiplier || 1;
+}
+
+function levelTaskDurabilityBudget(levelNumber, mechanic) {
+  let budget = clamp(72 + levelNumber, 76, 116);
+  if (mechanic.durabilityMultiplier) budget -= 6;
+  if (mechanic.catchCostMultiplier) budget -= 5;
+  if (mechanic.weedCount) budget -= 5;
+  if (mechanic.maxCrabs) budget -= 4;
+  if (mechanic.perfectGoal || mechanic.comboGoal) budget -= 4;
+  return Math.max(58, budget);
+}
+
+function taskDurabilityRequirement(task, mechanic) {
+  const multiplier = mechanicDurabilityMultiplier(mechanic);
+  return Object.entries(task).reduce((sum, [fishId, count]) => {
+    const type = fishTypeById[fishId];
+    return type ? sum + effectiveCatchCost(type) * count * multiplier : sum;
+  }, 0);
+}
+
+function maxTargetCountByWeight(type) {
+  if (type.weight <= 1) return 2;
+  if (type.weight <= 2) return 3;
+  if (type.weight <= 3) return 4;
+  return 8;
+}
+
+function minTargetCount(fishId, newestId) {
+  if (fishId !== newestId) return 0;
+  const type = fishTypeById[fishId];
+  return type && effectiveCatchCost(type) >= 28 ? 1 : 2;
+}
+
+function balanceTaskForDurability(task, mechanic, levelNumber, newestId) {
+  for (const [fishId, count] of Object.entries(task)) {
+    const type = fishTypeById[fishId];
+    if (!type) {
+      delete task[fishId];
+      continue;
+    }
+    task[fishId] = Math.min(count, maxTargetCountByWeight(type));
+  }
+
+  const budget = levelTaskDurabilityBudget(levelNumber, mechanic);
+  while (taskDurabilityRequirement(task, mechanic) > budget) {
+    const reducible = Object.keys(task)
+      .filter((fishId) => task[fishId] > minTargetCount(fishId, newestId))
+      .sort((a, b) => effectiveCatchCost(fishTypeById[b]) - effectiveCatchCost(fishTypeById[a]))[0];
+
+    if (reducible) {
+      task[reducible] -= 1;
+      if (task[reducible] <= 0) delete task[reducible];
+      continue;
+    }
+
+    const removable = Object.keys(task)
+      .filter((fishId) => fishId !== newestId)
+      .sort((a, b) => effectiveCatchCost(fishTypeById[b]) - effectiveCatchCost(fishTypeById[a]))[0];
+
+    if (!removable) break;
+    delete task[removable];
+  }
+}
+
 function createLevelConfigs() {
   const chapterNames = ["夜市小摊", "庙会鱼池", "锦鲤池塘", "海洋触摸池", "金鳞挑战"];
   const configs = [];
@@ -147,6 +232,7 @@ function createLevelConfigs() {
     if (taskTypeCount >= 2 && second.id !== newest.id) task[second.id] = Math.min(6, 2 + Math.floor(i / 12));
     if (taskTypeCount >= 3 && third.id !== newest.id && third.id !== second.id) task[third.id] = Math.min(5, 1 + Math.floor(i / 16));
     if (taskTypeCount >= 4 && fourth.id !== newest.id && fourth.id !== second.id && fourth.id !== third.id) task[fourth.id] = Math.min(4, 1 + Math.floor(i / 20));
+    balanceTaskForDurability(task, mechanic, i, newest.id);
 
     const fishWeights = {};
     for (const type of availableTypes) {
@@ -175,20 +261,6 @@ function createLevelConfigs() {
 
 const levelConfigs = createLevelConfigs();
 
-const fishTypeById = Object.fromEntries(fishTypes.map((type) => [type.id, type]));
-Object.assign(fishTypeById.tropical, { dashInterval: 2.8, dashDuration: 0.45, dashMultiplier: 1.45 });
-Object.assign(fishTypeById.zebrafish, { dashInterval: 2.2, dashDuration: 0.5, dashMultiplier: 1.7, escapeSensitivity: 1.12 });
-Object.assign(fishTypeById.eel, { dashInterval: 3.2, dashDuration: 0.7, dashMultiplier: 1.55 });
-Object.assign(fishTypeById.rainbow, { dashInterval: 2.6, dashDuration: 0.55, dashMultiplier: 1.65, bonusCoinAmount: 18 });
-Object.assign(fishTypeById.puffer, { costMultiplier: 1.35, escapeSensitivity: 0.72 });
-Object.assign(fishTypeById.bigkoi, { costMultiplier: 1.18, escapeSensitivity: 0.82 });
-Object.assign(fishTypeById.carp, { costMultiplier: 1.2, escapeSensitivity: 0.86 });
-Object.assign(fishTypeById.silver, { bonusCoinAmount: 10 });
-Object.assign(fishTypeById.ruby, { bonusCoinAmount: 14 });
-Object.assign(fishTypeById.lantern, { repairAmount: 5 });
-Object.assign(fishTypeById.moon, { repairAmount: 6 });
-Object.assign(fishTypeById.crystal, { repairAmount: 8, escapeSensitivity: 1.08 });
-Object.assign(fishTypeById.dragon, { costMultiplier: 1.28, bonusCoinAmount: 26, escapeSensitivity: 1.22 });
 const savedLevelIndex = Number(localStorage.getItem("fishMasterLevel") || 0);
 const savedClearCount = Number(localStorage.getItem("fishMasterClears") ?? localStorage.getItem("fishMasterLevel") ?? 0);
 const savedCoins = migrateSavedCoins(Number(localStorage.getItem("fishMasterCoins") || 0));

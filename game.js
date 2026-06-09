@@ -156,13 +156,48 @@ function mechanicDurabilityMultiplier(mechanic) {
 }
 
 function levelTaskDurabilityBudget(levelNumber, mechanic) {
-  let budget = clamp(72 + levelNumber, 76, 116);
+  let budget = clamp(74 + levelNumber * 1.15, 76, 124);
   if (mechanic.durabilityMultiplier) budget -= 6;
   if (mechanic.catchCostMultiplier) budget -= 5;
   if (mechanic.weedCount) budget -= 5;
   if (mechanic.maxCrabs) budget -= 4;
   if (mechanic.perfectGoal || mechanic.comboGoal) budget -= 4;
   return Math.max(58, budget);
+}
+
+function difficultyForLevel(levelNumber) {
+  if (levelNumber <= 5) {
+    return {
+      tier: 0,
+      taskBonus: 0,
+      extraTaskTypes: 0,
+      fishSpeedMultiplier: 1,
+      escapeMultiplier: 1,
+      durationMod: 0,
+      fishBonus: 0,
+      maxCrabsBonus: 0,
+      weedBonus: 0,
+      shellBonus: 0,
+      perfectGoalBonus: 0,
+      comboGoalBonus: 0,
+    };
+  }
+
+  const tier = Math.min(5, Math.floor((levelNumber - 6) / 9) + 1);
+  return {
+    tier,
+    taskBonus: tier >= 2 ? 1 : 0,
+    extraTaskTypes: tier >= 3 ? 1 : 0,
+    fishSpeedMultiplier: 1 + tier * 0.035,
+    escapeMultiplier: 1 + tier * 0.04,
+    durationMod: -Math.min(8, tier * 2),
+    fishBonus: Math.min(5, tier),
+    maxCrabsBonus: tier >= 4 ? 1 : 0,
+    weedBonus: tier >= 3 ? 1 : 0,
+    shellBonus: tier >= 2 ? 1 : 0,
+    perfectGoalBonus: tier >= 4 ? 1 : 0,
+    comboGoalBonus: tier >= 4 ? 1 : 0,
+  };
 }
 
 function taskDurabilityRequirement(task, mechanic) {
@@ -234,10 +269,26 @@ function mergeEncounter(mechanic, encounter) {
 function buildLevelMechanic(baseMechanic, levelNumber) {
   let mechanic = { ...baseMechanic };
   const blockIndex = Math.floor((levelNumber - 1) / 3);
+  const difficulty = difficultyForLevel(levelNumber);
 
   if (levelNumber >= 3) {
     const encounter = encounterCycle[(blockIndex - 1 + encounterCycle.length) % encounterCycle.length];
     if (encounter.id !== mechanic.id) mechanic = mergeEncounter(mechanic, encounter);
+  }
+
+  if (difficulty.tier > 0) {
+    mechanic.fishSpeedMultiplier = (mechanic.fishSpeedMultiplier || 1) * difficulty.fishSpeedMultiplier;
+    mechanic.escapeMultiplier = (mechanic.escapeMultiplier || 1) * difficulty.escapeMultiplier;
+    mechanic.durationMod = (mechanic.durationMod || 0) + difficulty.durationMod;
+    mechanic.fishBonus = (mechanic.fishBonus || 0) + difficulty.fishBonus;
+    mechanic.taskBonus = (mechanic.taskBonus || 0) + difficulty.taskBonus;
+    mechanic.extraTaskTypes = (mechanic.extraTaskTypes || 0) + difficulty.extraTaskTypes;
+    if (mechanic.maxCrabs) mechanic.maxCrabs += difficulty.maxCrabsBonus;
+    if (mechanic.weedCount) mechanic.weedCount += difficulty.weedBonus;
+    if (mechanic.shellCount) mechanic.shellCount += difficulty.shellBonus;
+    if (mechanic.perfectGoal) mechanic.perfectGoal += difficulty.perfectGoalBonus;
+    if (mechanic.comboGoal) mechanic.comboGoal += difficulty.comboGoalBonus;
+    mechanic.difficultyTier = difficulty.tier;
   }
 
   const tags = mechanic.encounterTags || [];
@@ -264,13 +315,15 @@ function createLevelConfigs() {
     const second = availableTypes[Math.max(0, availableTypes.length - 2)];
     const third = availableTypes[Math.max(0, availableTypes.length - 3)];
     const fourth = availableTypes[Math.max(0, availableTypes.length - 4)];
+    const difficulty = difficultyForLevel(i);
     const taskTypeCount = Math.min(availableTypes.length, 1 + Math.floor(i / 10) + (mechanic.extraTaskTypes || 0), 4);
+    const baseNewestTarget = i <= 5 ? 3 : 3 + Math.floor((i - 1) / 9);
     const task = {};
 
-    task[newest.id] = Math.min(8, 3 + Math.floor(i / 7) + (mechanic.taskBonus || 0));
-    if (taskTypeCount >= 2 && second.id !== newest.id) task[second.id] = Math.min(6, 2 + Math.floor(i / 12));
-    if (taskTypeCount >= 3 && third.id !== newest.id && third.id !== second.id) task[third.id] = Math.min(5, 1 + Math.floor(i / 16));
-    if (taskTypeCount >= 4 && fourth.id !== newest.id && fourth.id !== second.id && fourth.id !== third.id) task[fourth.id] = Math.min(4, 1 + Math.floor(i / 20));
+    task[newest.id] = Math.min(8, baseNewestTarget + (mechanic.taskBonus || 0));
+    if (taskTypeCount >= 2 && second.id !== newest.id) task[second.id] = Math.min(6, 1 + Math.floor(i / 14) + (difficulty.tier >= 3 ? 1 : 0));
+    if (taskTypeCount >= 3 && third.id !== newest.id && third.id !== second.id) task[third.id] = Math.min(5, 1 + Math.floor(i / 22));
+    if (taskTypeCount >= 4 && fourth.id !== newest.id && fourth.id !== second.id && fourth.id !== third.id) task[fourth.id] = Math.min(4, 1 + Math.floor(i / 30));
     balanceTaskForDurability(task, mechanic, i, newest.id);
 
     const fishWeights = {};
@@ -285,9 +338,9 @@ function createLevelConfigs() {
       id: `${chapter}-${step}`,
       name: `${chapterNames[chapter - 1]} · ${mechanic.name}`,
       mechanic,
-      duration: Math.max(40, 60 + (mechanic.durationMod || 0)),
-      initialFish: Math.min(30, Math.max(Object.values(task).reduce((sum, count) => sum + count, 0) + 5, 17 + Math.floor(i / 4) + (mechanic.fishBonus || 0))),
-      minFish: Math.min(26, Math.max(Object.values(task).reduce((sum, count) => sum + count, 0), 15 + Math.floor(i / 6) + Math.floor((mechanic.fishBonus || 0) / 2))),
+      duration: Math.max(42, 62 + (mechanic.durationMod || 0)),
+      initialFish: Math.min(34, Math.max(Object.values(task).reduce((sum, count) => sum + count, 0) + 6, 17 + Math.floor(i / 4) + (mechanic.fishBonus || 0))),
+      minFish: Math.min(30, Math.max(Object.values(task).reduce((sum, count) => sum + count, 0), 15 + Math.floor(i / 6) + Math.floor((mechanic.fishBonus || 0) / 2))),
       activeFishIds: availableTypes.map((type) => type.id),
       task,
       fishWeights,
@@ -789,7 +842,7 @@ function chooseLevelFishType() {
       const baseWeight = level.fishWeights[type.id] ?? type.weight;
       const target = level.task[type.id] || 0;
       const progress = state.taskProgress[type.id] || 0;
-      const taskBoost = target > progress ? 18 : 0;
+      const taskBoost = target > progress ? 18 + (level.mechanic.difficultyTier || 0) * 2 : 0;
       return { ...type, weight: baseWeight + taskBoost };
     })
     .filter((type) => type.weight > 0);
@@ -932,7 +985,7 @@ function startGame() {
   state.crabs = [];
   state.weeds = spawnWeeds(level);
   state.shells = spawnShells(level);
-  state.schoolTimer = rand(4, 8);
+  state.schoolTimer = rand(4, Math.max(5.5, 8 - (level.mechanic.difficultyTier || 0) * 0.35));
   state.ripples = [];
   state.popups = [];
   state.splashes = [];
@@ -1288,8 +1341,8 @@ function update(dt) {
   }
   state.schoolTimer -= dt;
   if (state.schoolTimer <= 0) {
-    if (Math.random() < 0.65) createFishSchool();
-    state.schoolTimer = rand(8, 14);
+    if (Math.random() < 0.65 + Math.min(0.18, (level.mechanic.difficultyTier || 0) * 0.035)) createFishSchool();
+    state.schoolTimer = rand(7, Math.max(9, 14 - (level.mechanic.difficultyTier || 0) * 0.6));
   }
 
   const net = state.net;

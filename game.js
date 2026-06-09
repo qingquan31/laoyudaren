@@ -48,6 +48,11 @@ const NET_ESCAPE_IDLE_SPEED = 70;
 const NET_ESCAPE_SNEAK_SPEED = 180;
 const NET_ESCAPE_FAST_SPEED = 620;
 const NET_ESCAPE_TAIL_SPEED = 260;
+const SCORE_COIN_RATE = 0.04;
+const CLEAR_COIN_BASE = 20;
+const CLEAR_COIN_STEP = 4;
+const ECONOMY_VERSION = "2";
+const LEGACY_COIN_SCALE = 0.18;
 
 const NET_DAMAGE_HOLES = [
   { x: -48, y: -24, rx: 15, ry: 8, stage: 75 },
@@ -174,18 +179,19 @@ const fishTypeById = Object.fromEntries(fishTypes.map((type) => [type.id, type])
 Object.assign(fishTypeById.tropical, { dashInterval: 2.8, dashDuration: 0.45, dashMultiplier: 1.45 });
 Object.assign(fishTypeById.zebrafish, { dashInterval: 2.2, dashDuration: 0.5, dashMultiplier: 1.7, escapeSensitivity: 1.12 });
 Object.assign(fishTypeById.eel, { dashInterval: 3.2, dashDuration: 0.7, dashMultiplier: 1.55 });
-Object.assign(fishTypeById.rainbow, { dashInterval: 2.6, dashDuration: 0.55, dashMultiplier: 1.65, bonusCoinAmount: 80 });
+Object.assign(fishTypeById.rainbow, { dashInterval: 2.6, dashDuration: 0.55, dashMultiplier: 1.65, bonusCoinAmount: 18 });
 Object.assign(fishTypeById.puffer, { costMultiplier: 1.35, escapeSensitivity: 0.72 });
 Object.assign(fishTypeById.bigkoi, { costMultiplier: 1.18, escapeSensitivity: 0.82 });
 Object.assign(fishTypeById.carp, { costMultiplier: 1.2, escapeSensitivity: 0.86 });
-Object.assign(fishTypeById.silver, { bonusCoinAmount: 40 });
-Object.assign(fishTypeById.ruby, { bonusCoinAmount: 60 });
+Object.assign(fishTypeById.silver, { bonusCoinAmount: 10 });
+Object.assign(fishTypeById.ruby, { bonusCoinAmount: 14 });
 Object.assign(fishTypeById.lantern, { repairAmount: 5 });
 Object.assign(fishTypeById.moon, { repairAmount: 6 });
 Object.assign(fishTypeById.crystal, { repairAmount: 8, escapeSensitivity: 1.08 });
-Object.assign(fishTypeById.dragon, { costMultiplier: 1.28, bonusCoinAmount: 120, escapeSensitivity: 1.22 });
+Object.assign(fishTypeById.dragon, { costMultiplier: 1.28, bonusCoinAmount: 26, escapeSensitivity: 1.22 });
 const savedLevelIndex = Number(localStorage.getItem("fishMasterLevel") || 0);
 const savedClearCount = Number(localStorage.getItem("fishMasterClears") ?? localStorage.getItem("fishMasterLevel") ?? 0);
+const savedCoins = migrateSavedCoins(Number(localStorage.getItem("fishMasterCoins") || 0));
 let playerName = localStorage.getItem("fishMasterPlayerName") || "";
 const leaderboardConfig = window.LAODAREN_LEADERBOARD || {};
 const playerId = getOrCreatePlayerId();
@@ -206,7 +212,7 @@ const netConfigs = [
   {
     id: "sakura",
     name: "樱花纸网",
-    price: 200,
+    price: 1800,
     unlockClears: 1,
     maxDurability: 120,
     desc: "通关 1 次后可购买。",
@@ -214,14 +220,14 @@ const netConfigs = [
     rim: "#ffafcc",
     paper: "255,214,232",
     accent: "#ffafcc",
-    attr: "捕到鱼 15% 概率额外 +20 金币",
-    bonusCoinChance: 0.15,
-    bonusCoinAmount: 20,
+    attr: "捕到鱼 12% 概率额外 +5 金币",
+    bonusCoinChance: 0.12,
+    bonusCoinAmount: 5,
   },
   {
     id: "wave",
     name: "海浪纸网",
-    price: 1200,
+    price: 4200,
     unlockClears: 5,
     maxDurability: 140,
     desc: "通关 5 次后可购买。",
@@ -237,7 +243,7 @@ const netConfigs = [
   {
     id: "gold",
     name: "金鳞纸网",
-    price: 2600,
+    price: 7600,
     unlockClears: 10,
     maxDurability: 180,
     desc: "通关 10 次后可购买。",
@@ -245,9 +251,9 @@ const netConfigs = [
     rim: "#ffd60a",
     paper: "255,236,179",
     accent: "#f77f00",
-    attr: "捕到鱼 25% 概率 +50 金币，15% 概率恢复 8 耐久",
-    bonusCoinChance: 0.25,
-    bonusCoinAmount: 50,
+    attr: "捕到鱼 20% 概率 +12 金币，15% 概率恢复 8 耐久",
+    bonusCoinChance: 0.2,
+    bonusCoinAmount: 12,
     repairChance: 0.15,
     repairAmount: 8,
   },
@@ -267,7 +273,7 @@ const state = {
   perfectCatches: 0,
   equippedNetId: ownedNetIds.has(savedEquippedNet) && netById[savedEquippedNet] ? savedEquippedNet : "paper",
   score: 0,
-  coins: Number(localStorage.getItem("fishMasterCoins") || 0),
+  coins: savedCoins,
   bonusCoins: 0,
   caught: 0,
   maxCombo: 0,
@@ -317,6 +323,15 @@ function chooseWeighted(items) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function migrateSavedCoins(rawCoins) {
+  const coins = Number.isFinite(rawCoins) ? Math.max(0, rawCoins) : 0;
+  if (localStorage.getItem("fishMasterEconomyVersion") === ECONOMY_VERSION) return coins;
+  const migratedCoins = Math.floor(coins * LEGACY_COIN_SCALE);
+  localStorage.setItem("fishMasterCoins", String(migratedCoins));
+  localStorage.setItem("fishMasterEconomyVersion", ECONOMY_VERSION);
+  return migratedCoins;
 }
 
 function dist(a, b, c, d) {
@@ -437,6 +452,7 @@ function resetAllProgress() {
   localStorage.setItem("fishMasterLevel", "0");
   localStorage.setItem("fishMasterClears", "0");
   localStorage.setItem("fishMasterCoins", "0");
+  localStorage.setItem("fishMasterEconomyVersion", ECONOMY_VERSION);
   saveRankProgress();
   saveNetState();
 
@@ -826,8 +842,8 @@ function finishGame(reason) {
   const passed = reason === "clear" || areTasksComplete();
   const clearedLevelNumber = levelConfigs.indexOf(level) + 1;
   state.resultPassed = passed;
-  const scoreCoins = Math.round(state.score * 0.25);
-  const clearBonus = passed ? 180 + clearedLevelNumber * 20 : 0;
+  const scoreCoins = Math.round(state.score * SCORE_COIN_RATE);
+  const clearBonus = passed ? CLEAR_COIN_BASE + clearedLevelNumber * CLEAR_COIN_STEP : 0;
   const coins = Math.max(0, scoreCoins + clearBonus + state.bonusCoins);
   state.coins += coins;
   localStorage.setItem("fishMasterCoins", String(state.coins));
@@ -908,7 +924,7 @@ function repairDurability(amount, x, y, label = `耐久 +${amount}%`) {
 function collectShell(shell) {
   shell.collected = true;
   if (Math.random() < 0.5) {
-    const coins = 35;
+    const coins = 8;
     state.bonusCoins += coins;
     state.popups.push({ text: `贝壳 +${coins}金币`, x: shell.x, y: shell.y - 60, life: 0.9, color: "#ffe66d", size: 30 });
   } else {

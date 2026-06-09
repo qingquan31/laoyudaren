@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>捞鱼达人</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="phone-frame" aria-label="捞鱼达人游戏">
+        <canvas id="game" width="1080" height="1920"></canvas>
+
+        <div id="menu" class="screen is-active">
+          <div class="menu-top">
+            <div class="currency">金币 <strong id="coinTotal">0</strong></div>
+            <div class="ticket">门票 <strong>3</strong></div>
+          </div>
+          <div class="title-block">
+            <h1>捞鱼达人</h1>
+            <p id="menuLevelText">第 1 关：完成目标后进入下一关</p>
+          </div>
+          <div class="aquarium-preview">
+            <div class="preview-water">
+              <span class="fish-dot fish-a"></span>
+              <span class="fish-dot fish-b"></span>
+              <span class="fish-dot fish-c"></span>
+              <span class="fish-dot fish-d"></span>
+            </div>
+          </div>
+          <div class="equipped-net">当前纸网 <strong id="equippedNetText">普通纸网</strong></div>
+          <button id="startBtn" class="primary-btn" type="button">开始捞鱼</button>
+          <nav class="bottom-nav" aria-label="功能入口">
+            <button id="rankBtn" type="button">排行</button>
+            <button id="shopBtn" type="button">纸网</button>
+            <button id="resetGameBtn" type="button">重新游戏</button>
+          </nav>
+        </div>
+
+        <div id="hud" class="hud" aria-live="polite">
+          <div class="hud-row">
+            <button id="pauseBtn" class="icon-btn" type="button" aria-label="暂停">Ⅱ</button>
+            <div class="score">得分 <strong id="scoreText">0</strong></div>
+            <div class="timer">⏱ <strong id="timeText">60</strong></div>
+          </div>
+          <div class="durability-wrap">
+            <div id="durabilityBar" class="durability-bar"></div>
+            <span id="durabilityText">100%</span>
+          </div>
+          <div class="task-panel">
+            <div class="task-title"><span id="levelText">第 1 关</span><strong id="taskStateText">目标</strong></div>
+            <div id="taskList" class="task-list"></div>
+          </div>
+          <div id="comboText" class="combo"></div>
+          <div class="bucket">桶 ×<strong id="bucketText">0</strong></div>
+        </div>
+
+        <div id="pauseScreen" class="screen modal-screen">
+          <div class="panel">
+            <h2>暂停</h2>
+            <button id="resumeBtn" class="primary-btn" type="button">继续</button>
+            <button id="restartFromPauseBtn" class="secondary-btn" type="button">重新开始</button>
+            <button id="menuFromPauseBtn" class="secondary-btn" type="button">回到主界面</button>
+          </div>
+        </div>
+
+        <div id="shopScreen" class="screen modal-screen">
+          <div class="panel shop-panel">
+            <h2>纸网商店</h2>
+            <div class="shop-wallet">金币 <strong id="shopCoinText">0</strong></div>
+            <div id="netList" class="net-list"></div>
+            <button id="closeShopBtn" class="secondary-btn" type="button">关闭</button>
+          </div>
+        </div>
+
+        <div id="rankScreen" class="screen modal-screen">
+          <div class="panel rank-panel">
+            <h2>排行榜</h2>
+            <div class="shop-wallet">玩家 <strong id="playerNameText">未命名</strong></div>
+            <div id="rankList" class="rank-list"></div>
+            <button id="closeRankBtn" class="secondary-btn" type="button">关闭</button>
+          </div>
+        </div>
+
+        <div id="resultScreen" class="screen modal-screen">
+          <div class="panel result-panel">
+            <h2 id="resultTitle">结算</h2>
+            <div class="result-grid">
+              <span>关卡</span><strong id="finalLevel">1-1</strong>
+              <span>任务</span><strong id="finalTask">未完成</strong>
+              <span>得分</span><strong id="finalScore">0</strong>
+              <span>捞到</span><strong id="finalCount">0 条</strong>
+              <span>最高连击</span><strong id="finalCombo">0</strong>
+              <span>获得金币</span><strong id="finalCoins">0</strong>
+            </div>
+            <button id="nextLevelBtn" class="primary-btn" type="button">下一关</button>
+            <button id="restartBtn" class="secondary-btn" type="button">重玩本关</button>
+            <button id="menuBtn" class="secondary-btn" type="button">回到主界面</button>
+          </div>
+        </div>
+
+        <div id="toast" class="toast" role="status"></div>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>

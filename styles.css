@@ -605,6 +605,16 @@ h1 {
   margin-bottom: 12px;
 }
 
+.rank-status {
+  width: 100%;
+  min-height: 20px;
+  margin: -2px 0 8px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+}
+
 .rank-row {
   display: grid;
   grid-template-columns: 38px 1fr auto;

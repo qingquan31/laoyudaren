@@ -28,6 +28,7 @@ const shopCoinText = document.getElementById("shopCoinText");
 const netList = document.getElementById("netList");
 const playerNameText = document.getElementById("playerNameText");
 const rankList = document.getElementById("rankList");
+const rankStatusText = document.getElementById("rankStatusText");
 
 const finalScore = document.getElementById("finalScore");
 const finalCount = document.getElementById("finalCount");
@@ -186,6 +187,8 @@ Object.assign(fishTypeById.dragon, { costMultiplier: 1.28, bonusCoinAmount: 120,
 const savedLevelIndex = Number(localStorage.getItem("fishMasterLevel") || 0);
 const savedClearCount = Number(localStorage.getItem("fishMasterClears") ?? localStorage.getItem("fishMasterLevel") ?? 0);
 let playerName = localStorage.getItem("fishMasterPlayerName") || "";
+const leaderboardConfig = window.LAODAREN_LEADERBOARD || {};
+const playerId = getOrCreatePlayerId();
 
 const netConfigs = [
   {
@@ -434,7 +437,7 @@ function resetAllProgress() {
   localStorage.setItem("fishMasterLevel", "0");
   localStorage.setItem("fishMasterClears", "0");
   localStorage.setItem("fishMasterCoins", "0");
-  if (playerName) localStorage.setItem("fishMasterRankEntry", JSON.stringify({ name: playerName, clears: 0 }));
+  saveRankProgress();
   saveNetState();
 
   coinTotal.textContent = "0";
@@ -453,36 +456,163 @@ function ensurePlayerName() {
   return true;
 }
 
-function saveRankProgress() {
-  if (!playerName) return;
-  localStorage.setItem("fishMasterRankEntry", JSON.stringify({ name: playerName, clears: state.clearCount }));
+function getOrCreatePlayerId() {
+  const storageKey = "fishMasterPlayerId";
+  const saved = localStorage.getItem(storageKey);
+  if (saved) return saved;
+  const id = globalThis.crypto?.randomUUID ? crypto.randomUUID() : `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem(storageKey, id);
+  return id;
 }
 
-function renderRank() {
+function isOnlineRankEnabled() {
+  return leaderboardConfig.provider === "supabase" && leaderboardConfig.supabaseUrl && leaderboardConfig.supabaseAnonKey;
+}
+
+function localRankEntry() {
+  try {
+    return JSON.parse(localStorage.getItem("fishMasterRankEntry") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function currentRankEntry() {
+  return {
+    playerId,
+    name: playerName || "未命名",
+    clears: state.clearCount,
+    levelIndex: state.levelIndex,
+    score: Math.round(state.score || 0),
+  };
+}
+
+function saveLocalRankEntry(entry) {
+  localStorage.setItem("fishMasterRankEntry", JSON.stringify(entry));
+}
+
+function supabaseHeaders(extra = {}) {
+  return {
+    apikey: leaderboardConfig.supabaseAnonKey,
+    Authorization: `Bearer ${leaderboardConfig.supabaseAnonKey}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
+}
+
+function supabaseUrl(path) {
+  return `${leaderboardConfig.supabaseUrl.replace(/\/$/, "")}/rest/v1/${path}`;
+}
+
+async function syncOnlineRank(entry) {
+  if (!isOnlineRankEnabled()) return false;
+  const payload = {
+    player_id: entry.playerId,
+    name: entry.name,
+    clears: entry.clears,
+    level_index: entry.levelIndex,
+    score: entry.score,
+    updated_at: new Date().toISOString(),
+  };
+  const response = await fetch(supabaseUrl("fish_master_leaderboard?on_conflict=player_id"), {
+    method: "POST",
+    headers: supabaseHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`leaderboard sync failed: ${response.status}`);
+  return true;
+}
+
+async function fetchOnlineRank() {
+  if (!isOnlineRankEnabled()) return null;
+  const query = "fish_master_leaderboard?select=player_id,name,clears,level_index,score,updated_at&order=clears.desc,score.desc,updated_at.asc&limit=20";
+  const response = await fetch(supabaseUrl(query), {
+    method: "GET",
+    headers: supabaseHeaders(),
+  });
+  if (!response.ok) throw new Error(`leaderboard fetch failed: ${response.status}`);
+  return response.json();
+}
+
+function normalizeRankEntry(entry) {
+  return {
+    playerId: entry.player_id || entry.playerId || entry.name || "",
+    name: String(entry.name || "未命名").slice(0, 10),
+    clears: clamp(Number(entry.clears) || 0, 0, levelConfigs.length),
+    levelIndex: clamp(Number(entry.level_index ?? entry.levelIndex ?? 0) || 0, 0, levelConfigs.length - 1),
+    score: Math.max(0, Number(entry.score) || 0),
+    isPlayer: (entry.player_id || entry.playerId) === playerId || entry.name === playerName,
+  };
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function setRankStatus(text) {
+  rankStatusText.textContent = text;
+}
+
+function saveRankProgress() {
+  if (!playerName) return;
+  const entry = currentRankEntry();
+  saveLocalRankEntry(entry);
+  syncOnlineRank(entry).catch(() => {
+    if (state.mode === "rank") setRankStatus("在线排行榜同步失败，当前显示本机记录");
+  });
+}
+
+async function renderRank() {
   playerNameText.textContent = playerName || "未命名";
-  const savedEntry = JSON.parse(localStorage.getItem("fishMasterRankEntry") || "null");
-  const playerEntry = { name: playerName || "未命名", clears: state.clearCount, isPlayer: true };
-  const entries = [savedEntry || playerEntry]
-    .map((entry) => ({ ...entry, isPlayer: entry.name === playerEntry.name }))
+  const playerEntry = currentRankEntry();
+  saveLocalRankEntry(playerEntry);
+
+  let statusText = "本机排行榜";
+  let rawEntries = [localRankEntry() || playerEntry];
+  if (isOnlineRankEnabled()) {
+    setRankStatus("正在同步在线排行榜...");
+    try {
+      await syncOnlineRank(playerEntry);
+      rawEntries = await fetchOnlineRank();
+      statusText = "在线排行榜";
+    } catch {
+      statusText = "在线排行榜连接失败，当前显示本机记录";
+    }
+  } else {
+    statusText = "未配置在线排行榜，当前只能显示本机记录";
+  }
+
+  const entries = [...rawEntries, playerEntry]
+    .filter(Boolean)
+    .map(normalizeRankEntry)
+    .filter((entry, index, list) => list.findIndex((item) => item.playerId === entry.playerId && item.name === entry.name) === index)
     .sort((a, b) => b.clears - a.clears)
-    .slice(0, 8);
+    .slice(0, 20);
+
+  setRankStatus(statusText);
 
   rankList.innerHTML = entries
     .map((entry, index) => `
       <div class="rank-row${entry.isPlayer ? " is-player" : ""}">
         <span class="rank-no">${index + 1}</span>
-        <span class="rank-name">${entry.name}</span>
+        <span class="rank-name">${escapeHtml(entry.name)}</span>
         <span class="rank-progress">通关 ${entry.clears}</span>
       </div>
     `)
     .join("");
 }
 
-function openRank() {
+async function openRank() {
   if (!ensurePlayerName()) return;
-  saveRankProgress();
-  renderRank();
   setScreen("rank");
+  setRankStatus("正在读取排行榜...");
+  saveRankProgress();
+  await renderRank();
 }
 
 function resetTaskProgress() {
